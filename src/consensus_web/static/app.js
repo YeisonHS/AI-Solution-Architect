@@ -392,6 +392,28 @@
     parent.appendChild(span);
   }
 
+  function renderPlan(plan) {
+    const container = document.querySelector("#plan");
+    container.replaceChildren();
+    if (!plan || !plan.length) return;
+    addText(container, "p", "Pasos sugeridos para llevar la solución a producción.", "helper-text");
+    const effortKind = { bajo: "pass", medio: "warn", alto: "fail" };
+    plan.forEach((step) => {
+      const card = document.createElement("article");
+      card.className = "plan-step";
+      const head = document.createElement("div");
+      head.className = "plan-head";
+      addText(head, "strong", step.title);
+      const chip = document.createElement("span");
+      chip.className = "chip " + (effortKind[step.effort] || "muted");
+      chip.textContent = "esfuerzo " + step.effort;
+      head.appendChild(chip);
+      card.appendChild(head);
+      addText(card, "p", step.detail, "helper-text");
+      container.appendChild(card);
+    });
+  }
+
   function renderAll() {
     if (!lastData) return;
     renderProblem(lastData);
@@ -401,6 +423,7 @@
     renderDeploy(lastData.deployment_options);
     renderAdr(lastData);
     renderEvaluation(lastData.evaluation);
+    renderPlan(lastData.implementation_plan);
   }
 
   function setMode(next) {

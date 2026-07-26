@@ -107,6 +107,18 @@ class ClassicFamiliesTests(unittest.TestCase):
         data = serialize_adr(ctx, run_review(ctx))
         self.assertEqual(data["recommendation"]["deploy_target"], "batch_transform")
 
+    def test_implementation_plan_has_ordered_steps(self) -> None:
+        ctx = context("predecir precio", task="regression", budget=200)
+        data = serialize_adr(ctx, run_review(ctx))
+        plan = data["implementation_plan"]
+        self.assertEqual(len(plan), 6)
+        for step in plan:
+            self.assertTrue(step["title"] and step["detail"])
+            self.assertIn(step["effort"], ("bajo", "medio", "alto"))
+        # First step is data prep, last is monitoring.
+        self.assertIn("datos", plan[0]["title"].lower())
+        self.assertIn("monitoreo", plan[-1]["title"].lower())
+
     def test_catalog_depth_and_invariants(self) -> None:
         from architect.catalog import FAMILY_LABELS, techniques_for
 

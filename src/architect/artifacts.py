@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 from .catalog import DEPLOY_TARGETS
 from .evaluation import evaluation_for
+from .plan import implementation_plan
 from .techniques import resolve_family
 from .models import ArchitectureDecisionRecord, ProblemContext
 
@@ -133,6 +134,14 @@ def _adr_md(context, adr, deploy_name, cost) -> str:
     lines.append("")
     lines.append("Errores comunes a evitar:")
     lines.extend("- {}".format(p) for p in evaluation["pitfalls"])
+
+    plan = implementation_plan(context, adr)
+    lines.append("")
+    lines.append("## Plan de implementación")
+    for step in plan:
+        lines.append("- **{}** (esfuerzo {}): {}".format(
+            step["title"], step["effort"], step["detail"]
+        ))
     return "\n".join(lines)
 
 

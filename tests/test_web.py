@@ -318,6 +318,7 @@ class ConsensusWebTests(unittest.TestCase):
             self.assertIn(expected, paths)
         adr_md = next(f["content"] for f in json.loads(body)["files"] if f["path"] == "docs/ADR.md")
         self.assertIn("Métricas y validación", adr_md)
+        self.assertIn("Plan de implementación", adr_md)
 
     def test_artifacts_zip_downloads_valid_archive(self) -> None:
         import io

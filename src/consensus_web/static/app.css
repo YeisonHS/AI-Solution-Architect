@@ -71,6 +71,8 @@ textarea { resize: vertical; }
 .table-wrap th { color: var(--muted); font-size: 0.76rem; text-transform: uppercase; }
 .matrix-row { display: grid; grid-template-columns: 120px 1fr 52px; align-items: center; gap: 12px; }
 .problem-family { margin: 0; font-size: 1.15rem; font-weight: 750; color: var(--primary); }
+.plan-step { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fafcff; margin-bottom: 10px; }
+.plan-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .techniques, .deploy { display: grid; gap: 10px; }
 .tech-card, .deploy-card { padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: #fafcff; }
 .tech-card.recommended { border-color: #30a46c; box-shadow: 0 0 0 2px #cdeedd; background: #f4fbf7; }

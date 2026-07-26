@@ -22,6 +22,7 @@ from .models import (
 )
 from .techniques import deployment_options, resolve_family, technique_options
 from .evaluation import evaluation_for
+from .plan import implementation_plan
 
 _MAX_ROUNDS = 3
 
@@ -94,6 +95,7 @@ def serialize_adr(
             "label": FAMILY_LABELS.get(family, family),
         },
         "evaluation": evaluation_for(family),
+        "implementation_plan": implementation_plan(context, adr),
         "technique_options": technique_options(context),
         "deployment_options": deployment_options(context),
         "capability_matrix": [
