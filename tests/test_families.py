@@ -59,6 +59,54 @@ class ClassicFamiliesTests(unittest.TestCase):
         data = serialize_adr(ctx, run_review(ctx))
         self.assertEqual(data["problem"]["family"], "forecasting")
 
+    def test_adr_includes_evaluation_per_family(self) -> None:
+        from architect.catalog import FAMILY_LABELS
+
+        for family in FAMILY_LABELS:
+            ctx = context("caso", task=family, budget=5000)
+            data = serialize_adr(ctx, run_review(ctx))
+            ev = data["evaluation"]
+            self.assertTrue(ev["metrics"] and ev["validation"] and ev["pitfalls"])
+            self.assertTrue(ev["baseline"])
+
+    def test_regression_metrics_present(self) -> None:
+        ctx = context("predecir precio", task="regression")
+        data = serialize_adr(ctx, run_review(ctx))
+        names = [m["name"] for m in data["evaluation"]["metrics"]]
+        self.assertIn("RMSE", names)
+
+    def test_forecasting_validation_mentions_temporal(self) -> None:
+        ctx = context("pronóstico de demanda", task="forecasting")
+        data = serialize_adr(ctx, run_review(ctx))
+        joined = " ".join(data["evaluation"]["validation"]).lower()
+        self.assertIn("temporal", joined)
+
+    def test_interpretability_prefers_simpler_technique(self) -> None:
+        from architect import Constraints, HardwareProfile, ProblemContext
+
+        ctx = ProblemContext(
+            description="predecir precio",
+            hardware=HardwareProfile(cpu_cores=8, ram_gb=16, unified_memory=True),
+            constraints=Constraints(interpretability_required=True),
+            task="regression",
+        )
+        data = serialize_adr(ctx, run_review(ctx))
+        recommended = next(t for t in data["technique_options"] if t["recommended"])
+        self.assertEqual(recommended["complexity"], "baja")
+        self.assertEqual(data["recommendation"]["strategy"], "linear_regression")
+
+    def test_serving_mode_batch_selects_batch_transform(self) -> None:
+        from architect import Constraints, HardwareProfile, ProblemContext
+
+        ctx = ProblemContext(
+            description="predecir precio",
+            hardware=HardwareProfile(cpu_cores=8, ram_gb=16, unified_memory=True),
+            constraints=Constraints(serving_mode="batch"),
+            task="regression",
+        )
+        data = serialize_adr(ctx, run_review(ctx))
+        self.assertEqual(data["recommendation"]["deploy_target"], "batch_transform")
+
     def test_catalog_depth_and_invariants(self) -> None:
         from architect.catalog import FAMILY_LABELS, techniques_for
 

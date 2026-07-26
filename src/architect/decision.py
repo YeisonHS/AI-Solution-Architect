@@ -21,6 +21,7 @@ from .models import (
     RejectedAlternative,
 )
 from .techniques import deployment_options, resolve_family, technique_options
+from .evaluation import evaluation_for
 
 _MAX_ROUNDS = 3
 
@@ -92,6 +93,7 @@ def serialize_adr(
             "family": family,
             "label": FAMILY_LABELS.get(family, family),
         },
+        "evaluation": evaluation_for(family),
         "technique_options": technique_options(context),
         "deployment_options": deployment_options(context),
         "capability_matrix": [

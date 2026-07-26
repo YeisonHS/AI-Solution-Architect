@@ -23,6 +23,12 @@ PRIVACY_PRIVATE = "private_cloud"
 PRIVACY_ON_PREM = "on_prem_only"
 PRIVACY_LEVELS = (PRIVACY_PUBLIC, PRIVACY_PRIVATE, PRIVACY_ON_PREM)
 
+# Serving modes influence the deployment target.
+SERVING_REALTIME = "realtime"
+SERVING_BATCH = "batch"
+SERVING_STREAMING = "streaming"
+SERVING_MODES = (SERVING_REALTIME, SERVING_BATCH, SERVING_STREAMING)
+
 
 @dataclass(frozen=True)
 class HardwareProfile:
@@ -54,10 +60,15 @@ class Constraints:
     privacy: str = PRIVACY_PUBLIC
     expected_requests_per_day: Optional[int] = None
     data_changes_frequently: bool = False
+    interpretability_required: bool = False
+    class_imbalance: bool = False
+    serving_mode: str = "realtime"
 
     def __post_init__(self) -> None:
         if self.privacy not in PRIVACY_LEVELS:
             raise ValueError("privacy must be one of {}".format(PRIVACY_LEVELS))
+        if self.serving_mode not in SERVING_MODES:
+            raise ValueError("serving_mode must be one of {}".format(SERVING_MODES))
         for name, value in (
             ("monthly_budget_usd", self.monthly_budget_usd),
             ("max_latency_ms", self.max_latency_ms),

@@ -58,16 +58,40 @@ def _feasible_target_keys(technique: Technique) -> List[str]:
     ]
 
 
-def _preferred_target(technique: Technique) -> str:
-    return "sagemaker_realtime_gpu" if technique.needs_gpu else "sagemaker_serverless"
+def _preferred_target(technique: Technique, context: Optional[ProblemContext] = None) -> str:
+    if technique.needs_gpu:
+        return "sagemaker_realtime_gpu"
+    mode = context.constraints.serving_mode if context else "realtime"
+    if mode == "batch":
+        return "batch_transform"
+    if mode == "streaming":
+        return "ecs_fargate"
+    return "sagemaker_serverless"
 
 
-def _ordered_targets(technique: Technique) -> List[str]:
-    """Preferred deploy first, then cheaper feasible ones by monthly cost."""
-    preferred = _preferred_target(technique)
+def _ordered_targets(
+    technique: Technique, context: Optional[ProblemContext] = None
+) -> List[str]:
+    """Preferred deploy first (by serving mode), then cheaper feasible ones."""
+    preferred = _preferred_target(technique, context)
     others = [k for k in _feasible_target_keys(technique) if k != preferred]
     others.sort(key=lambda k: estimate_monthly(technique, k))
     return [preferred] + others
+
+
+def pick_technique(family: str, context: Optional[ProblemContext] = None):
+    """Recommended technique, favouring interpretable ones when required."""
+    options = techniques_for(family)
+    if not options:
+        return None
+    if context and context.constraints.interpretability_required:
+        interpretable = [
+            t for t in options if not t.needs_gpu and t.complexity in ("baja", "media")
+        ]
+        interpretable.sort(key=lambda t: 0 if t.complexity == "baja" else 1)
+        if interpretable:
+            return interpretable[0]
+    return options[0]
 
 
 def _classic_candidate(
@@ -137,10 +161,10 @@ def candidate_plan(context: ProblemContext) -> List[ArchitectureCandidate]:
         )
         return [_generative_candidate(s, context) for s in order]
 
-    technique = recommended_technique(family)
+    technique = pick_technique(family, context)
     if technique is None:
         return [_generative_candidate("rag", context)]
-    return [_classic_candidate(family, technique, key) for key in _ordered_targets(technique)]
+    return [_classic_candidate(family, technique, key) for key in _ordered_targets(technique, context)]
 
 
 def next_candidate(
@@ -158,6 +182,8 @@ def technique_options(context: ProblemContext) -> List[Dict[str, Any]]:
     """The menu of techniques for the resolved family (recommended flagged)."""
     family = resolve_family(context)
     options = techniques_for(family)
+    chosen = pick_technique(family, context)
+    chosen_key = chosen.key if chosen else None
     return [
         {
             "key": t.key,
@@ -167,21 +193,21 @@ def technique_options(context: ProblemContext) -> List[Dict[str, Any]]:
             "frameworks": list(t.frameworks),
             "complexity": t.complexity,
             "needs_gpu": t.needs_gpu,
-            "recommended": index == 0,
+            "recommended": t.key == chosen_key,
         }
-        for index, t in enumerate(options)
+        for t in options
     ]
 
 
 def deployment_options(context: ProblemContext) -> List[Dict[str, Any]]:
     """Deployment targets feasible for the recommended technique, with costs."""
     family = resolve_family(context)
-    technique = recommended_technique(family)
+    technique = pick_technique(family, context)
     if technique is None:
         return []
     budget = context.constraints.monthly_budget_usd
     results = []
-    for key in _ordered_targets(technique):
+    for key in _ordered_targets(technique, context):
         target = DEPLOY_TARGETS[key]
         monthly = estimate_monthly(technique, key)
         results.append(

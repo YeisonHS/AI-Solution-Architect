@@ -12,6 +12,8 @@ import re
 from typing import Any, Dict, List
 
 from .catalog import DEPLOY_TARGETS
+from .evaluation import evaluation_for
+from .techniques import resolve_family
 from .models import ArchitectureDecisionRecord, ProblemContext
 
 
@@ -116,6 +118,21 @@ def _adr_md(context, adr, deploy_name, cost) -> str:
             lines.append("Veredicto del Board: {}".format(alt.board_summary))
             lines.extend("- {}".format(r) for r in alt.reasons)
             lines.append("")
+
+    evaluation = evaluation_for(resolve_family(context))
+    lines.append("## Métricas y validación")
+    lines.append("Métricas sugeridas:")
+    lines.extend(
+        "- **{}**: {}".format(m["name"], m["note"]) for m in evaluation["metrics"]
+    )
+    lines.append("")
+    lines.append("Validación:")
+    lines.extend("- {}".format(v) for v in evaluation["validation"])
+    lines.append("")
+    lines.append("Baseline a superar: {}".format(evaluation["baseline"]))
+    lines.append("")
+    lines.append("Errores comunes a evitar:")
+    lines.extend("- {}".format(p) for p in evaluation["pitfalls"])
     return "\n".join(lines)
 
 

@@ -58,6 +58,17 @@ textarea { resize: vertical; }
 .mode-btn.active { background: var(--primary); color: #fff; }
 
 .matrix { display: grid; gap: 10px; }
+.eda-panel { border-left: 5px solid #6b46c1; }
+.route-hint { margin-bottom: 18px; padding: 14px 16px; border-radius: 10px; font-weight: 650; border: 1px solid var(--line); }
+.route-hint.eda { background: #f3eefe; color: #4c2c92; border-color: #d6c6f5; }
+.route-hint.direct { background: #eaf7f0; color: #075c36; border-color: #bfe6d1; }
+.route-hint .route-title { display: block; font-weight: 800; margin-bottom: 2px; }
+.eda-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 6px; }
+.mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.86rem; }
+.table-wrap { overflow-x: auto; margin-top: 6px; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.table-wrap th, .table-wrap td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.table-wrap th { color: var(--muted); font-size: 0.76rem; text-transform: uppercase; }
 .matrix-row { display: grid; grid-template-columns: 120px 1fr 52px; align-items: center; gap: 12px; }
 .problem-family { margin: 0; font-size: 1.15rem; font-weight: 750; color: var(--primary); }
 .techniques, .deploy { display: grid; gap: 10px; }

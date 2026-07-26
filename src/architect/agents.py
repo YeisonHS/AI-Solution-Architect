@@ -106,7 +106,17 @@ def cost_agent(
 def best_practices_agent(
     context: ProblemContext, candidate: ArchitectureCandidate
 ) -> AgentVerdict:
-    """Warn on MLOps/scalability complexity; never blocks."""
+    """Warn on MLOps/scalability/latency complexity; never blocks."""
+    latency = context.constraints.max_latency_ms
+    if latency is not None and latency < 50 and _is_heavy(candidate):
+        return AgentVerdict(
+            agent="best_practices",
+            verdict="WARN",
+            severity="warning",
+            risk="Latencia objetivo <50 ms con endpoint/modelo GPU pesado: difícil de cumplir.",
+            hard_rules_passed=1,
+            hard_rules_total=1,
+        )
     if _is_heavy(candidate):
         return AgentVerdict(
             agent="best_practices",
@@ -142,6 +152,24 @@ def product_agent(
             verdict="WARN",
             severity="warning",
             risk="Sobre-ingeniería: con pocos datos un modelo más simple suele bastar.",
+            hard_rules_passed=1,
+            hard_rules_total=1,
+        )
+    if context.constraints.interpretability_required and _is_heavy(candidate):
+        return AgentVerdict(
+            agent="product",
+            verdict="WARN",
+            severity="warning",
+            risk="Se requiere interpretabilidad; prefiere un modelo más explicable.",
+            hard_rules_passed=1,
+            hard_rules_total=1,
+        )
+    if context.constraints.class_imbalance and resolve_family(context) == "classification":
+        return AgentVerdict(
+            agent="product",
+            verdict="WARN",
+            severity="warning",
+            risk="Hay desbalance de clases: aplica resampling/pesos y evalúa con PR-AUC.",
             hard_rules_passed=1,
             hard_rules_total=1,
         )

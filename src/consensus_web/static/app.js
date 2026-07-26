@@ -21,6 +21,10 @@
     privacy: document.querySelector("#privacy"),
     labeled: document.querySelector("#labeled"),
     dataChanges: document.querySelector("#data-changes"),
+    latency: document.querySelector("#latency"),
+    servingMode: document.querySelector("#serving-mode"),
+    interpretability: document.querySelector("#interpretability"),
+    imbalance: document.querySelector("#imbalance"),
     cpu: document.querySelector("#cpu"),
     ram: document.querySelector("#ram"),
     vram: document.querySelector("#vram"),
@@ -111,8 +115,13 @@
       constraints: {
         privacy: fields.privacy.value,
         data_changes_frequently: fields.dataChanges.checked,
+        serving_mode: fields.servingMode.value,
+        interpretability_required: fields.interpretability.checked,
+        class_imbalance: fields.imbalance.checked,
       },
     };
+    const latency = intOrUndefined(fields.latency);
+    if (latency !== undefined) payload.constraints.max_latency_ms = latency;
     if (fields.task.value) payload.task = fields.task.value;
     payload.dataset_labeled = fields.labeled.checked;
     const rows = intOrUndefined(fields.rows);
@@ -332,6 +341,57 @@
     return span;
   }
 
+  function renderEvaluation(evaluation) {
+    const container = document.querySelector("#evaluation");
+    container.replaceChildren();
+    if (!evaluation) return;
+
+    addText(container, "p", "Cómo medir y validar la solución recomendada.", "helper-text");
+
+    const metrics = document.createElement("section");
+    metrics.className = "result-block";
+    addText(metrics, "h4", "Métricas sugeridas");
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    evaluation.metrics.forEach((m) => chipEval(chips, m.name));
+    metrics.appendChild(chips);
+    if (mode === "expert") {
+      const ul = document.createElement("ul");
+      ul.className = "result-list";
+      evaluation.metrics.forEach((m) => addText(ul, "li", `${m.name}: ${m.note}`));
+      metrics.appendChild(ul);
+    }
+    container.appendChild(metrics);
+
+    const val = document.createElement("section");
+    val.className = "result-block";
+    addText(val, "h4", "Validación");
+    const vul = document.createElement("ul");
+    vul.className = "result-list";
+    evaluation.validation.forEach((v) => addText(vul, "li", v));
+    val.appendChild(vul);
+    addText(val, "p", `Baseline a superar: ${evaluation.baseline}`, "helper-text");
+    container.appendChild(val);
+
+    if (mode === "expert" && evaluation.pitfalls.length) {
+      const pit = document.createElement("section");
+      pit.className = "result-block";
+      addText(pit, "h4", "Errores comunes a evitar");
+      const pul = document.createElement("ul");
+      pul.className = "result-list";
+      evaluation.pitfalls.forEach((p) => addText(pul, "li", p));
+      pit.appendChild(pul);
+      container.appendChild(pit);
+    }
+  }
+
+  function chipEval(parent, text) {
+    const span = document.createElement("span");
+    span.className = "chip pass";
+    span.textContent = text;
+    parent.appendChild(span);
+  }
+
   function renderAll() {
     if (!lastData) return;
     renderProblem(lastData);
@@ -340,6 +400,7 @@
     renderDebate(lastData);
     renderDeploy(lastData.deployment_options);
     renderAdr(lastData);
+    renderEvaluation(lastData.evaluation);
   }
 
   function setMode(next) {
@@ -406,6 +467,10 @@
     fields.vram.value = "0";
     fields.hasGpu.checked = false;
     fields.unified.checked = true;
+    if (fields.latency) fields.latency.value = "";
+    if (fields.servingMode) fields.servingMode.value = "realtime";
+    if (fields.interpretability) fields.interpretability.checked = false;
+    if (fields.imbalance) fields.imbalance.checked = false;
     setStatus("Ejemplo cargado. Pulsa «Convocar al Board».");
   }
 
@@ -413,4 +478,352 @@
   loadExampleButton.addEventListener("click", loadExample);
   modeBeginner.addEventListener("click", () => setMode("beginner"));
   modeExpert.addEventListener("click", () => setMode("expert"));
+
+  // ---- EDA sub-tool ----
+  const eda = {
+    csv: document.querySelector("#eda-csv"),
+    header: document.querySelector("#eda-header"),
+    file: document.querySelector("#eda-file"),
+    run: document.querySelector("#eda-run"),
+    status: document.querySelector("#eda-status"),
+    result: document.querySelector("#eda-result"),
+  };
+
+  function edaStatus(message, type = "") {
+    eda.status.textContent = message;
+    eda.status.className = `form-status ${type}`;
+  }
+
+  if (eda.file) {
+    eda.file.addEventListener("change", () => {
+      const file = eda.file.files && eda.file.files[0];
+      if (!file) return;
+      if (file.size > 1000000) {
+        edaStatus("El archivo supera 1 MB; usa una muestra más pequeña.", "error");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => { eda.csv.value = String(reader.result || ""); };
+      reader.readAsText(file);
+    });
+  }
+
+  async function runEda() {
+    const csv = eda.csv.value.trim();
+    if (!csv) {
+      edaStatus("Pega o sube un CSV para analizar.", "error");
+      return;
+    }
+    eda.run.disabled = true;
+    edaStatus("Analizando en memoria…");
+    try {
+      const response = await fetch("api/eda", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv, has_header: eda.header.checked }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo analizar el CSV.");
+      renderEda(data);
+      edaStatus(data.privacy, "success");
+    } catch (error) {
+      edaStatus(error.message || "No se pudo analizar el CSV.", "error");
+    } finally {
+      eda.run.disabled = false;
+    }
+  }
+
+  function renderEda(data) {
+    eda.result.replaceChildren();
+    eda.result.hidden = false;
+
+    const summary = document.createElement("p");
+    summary.className = "helper-text";
+    summary.textContent = `${data.rows_analyzed} filas × ${data.columns_analyzed} columnas analizadas.`;
+    eda.result.appendChild(summary);
+
+    // Columns table
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+    const thead = document.createElement("tr");
+    ["Columna", "Tipo", "Únicos", "Faltantes", "Sugerencia"].forEach((h) => addText(thead, "th", h));
+    const head = document.createElement("thead");
+    head.appendChild(thead);
+    table.appendChild(head);
+    const tbody = document.createElement("tbody");
+    data.columns.forEach((c) => {
+      const tr = document.createElement("tr");
+      addText(tr, "td", c.name);
+      addText(tr, "td", c.type);
+      addText(tr, "td", String(c.n_unique));
+      addText(tr, "td", String(c.n_missing));
+      let hint = c.note || "";
+      if (c.type === "enumerator") hint = `Encoding: ${c.encoding}`;
+      else if (c.type === "numeric" && c.normalization) hint = `Escalar: ${c.normalization.recommended}`;
+      addText(tr, "td", hint);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    eda.result.appendChild(wrap);
+
+    // Enumerators with mapping
+    if (data.enumerators.length) {
+      const block = document.createElement("section");
+      block.className = "result-block";
+      addText(block, "h4", "Enumeradores normalizados (label encoding)");
+      data.enumerators.forEach((e) => {
+        const pairs = Object.entries(e.encoding_map).map(([k, v]) => `${k}→${v}`).join(", ");
+        addText(block, "p", `${e.name} [${e.encoding}]: ${pairs}`, "helper-text");
+      });
+      eda.result.appendChild(block);
+    }
+
+    // High correlations
+    const corr = document.createElement("section");
+    corr.className = "result-block";
+    addText(corr, "h4", "Correlaciones altas (|r| ≥ 0.7)");
+    if (!data.high_correlations.length) {
+      addText(corr, "p", "No se detectaron correlaciones altas.", "helper-text");
+    } else {
+      const ul = document.createElement("ul");
+      ul.className = "result-list";
+      data.high_correlations.forEach((p) => addText(ul, "li", `${p.a} ↔ ${p.b}: r = ${p.r}`));
+      corr.appendChild(ul);
+    }
+    eda.result.appendChild(corr);
+
+    // Correlation heatmap
+    renderHeatmap(data.correlations);
+
+    // Target column suggestion
+    const ctx = data.suggested_context || {};
+    if (ctx.target_candidates && ctx.target_candidates.length) {
+      const block = document.createElement("section");
+      block.className = "result-block";
+      addText(block, "h4", "Columna objetivo sugerida");
+      const taskWord = { regression: "Regresión", classification: "Clasificación" };
+      const select = document.createElement("select");
+      select.id = "eda-target";
+      ctx.target_candidates.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.column;
+        opt.dataset.task = c.suggested_task;
+        opt.textContent = `${c.column} → ${taskWord[c.suggested_task] || c.suggested_task}`;
+        if (c.column === ctx.primary_target) opt.selected = true;
+        select.appendChild(opt);
+      });
+      const label = document.createElement("label");
+      label.textContent = "Objetivo (define el tipo de problema)";
+      label.appendChild(select);
+      block.appendChild(label);
+      addText(block, "p", ctx.note || "", "helper-text");
+      eda.result.appendChild(block);
+    }
+
+    // Recommendations
+    if (data.recommendations.length) {
+      const rec = document.createElement("section");
+      rec.className = "result-block";
+      addText(rec, "h4", "Recomendaciones de preparación");
+      const ul = document.createElement("ul");
+      ul.className = "result-list";
+      data.recommendations.forEach((r) => addText(ul, "li", r));
+      rec.appendChild(ul);
+      eda.result.appendChild(rec);
+    }
+
+    // Prefill wizard
+    const actions = document.createElement("div");
+    actions.className = "artifacts-actions";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "button secondary";
+    btn.textContent = "Usar en el wizard";
+    btn.addEventListener("click", () => {
+      if (data.suggested_context && data.suggested_context.dataset_rows) {
+        fields.rows.value = String(data.suggested_context.dataset_rows);
+      }
+      fields.labeled.checked = true;
+      const targetSelect = document.querySelector("#eda-target");
+      let applied = "filas del dataset";
+      if (targetSelect) {
+        const opt = targetSelect.options[targetSelect.selectedIndex];
+        const task = opt && opt.dataset.task;
+        if (task) {
+          fields.task.value = task;
+          applied = `tipo de problema (${task}) y filas`;
+        }
+      }
+      edaStatus(`Señales aplicadas al wizard: ${applied}.`, "success");
+      fields.description.focus();
+    });
+    actions.appendChild(btn);
+    addText(actions, "span", "Aplica el objetivo detectado (tipo de problema) y el nº de filas.", "helper-text");
+    eda.result.appendChild(actions);
+  }
+
+  function corrColor(r) {
+    if (r === null || r === undefined) return "#eef1f7";
+    const intensity = Math.round(Math.min(Math.abs(r), 1) * 200);
+    if (r >= 0) return `rgb(${255 - intensity},${255 - Math.round(intensity / 3)},255)`;
+    return `rgb(255,${255 - intensity},${255 - intensity})`;
+  }
+
+  function renderHeatmap(correlations) {
+    const names = correlations ? Object.keys(correlations) : [];
+    if (names.length < 2) return;
+    const block = document.createElement("section");
+    block.className = "result-block";
+    addText(block, "h4", "Matriz de correlación");
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+    table.className = "heatmap";
+    const head = document.createElement("thead");
+    const hr = document.createElement("tr");
+    addText(hr, "th", "");
+    names.forEach((n) => addText(hr, "th", n));
+    head.appendChild(hr);
+    table.appendChild(head);
+    const body = document.createElement("tbody");
+    names.forEach((rowName) => {
+      const tr = document.createElement("tr");
+      addText(tr, "th", rowName);
+      names.forEach((colName) => {
+        const r = correlations[rowName][colName];
+        const td = addText(tr, "td", r === null || r === undefined ? "—" : r.toFixed(2));
+        td.style.background = corrColor(r);
+        td.style.textAlign = "center";
+      });
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    block.appendChild(wrap);
+    eda.result.appendChild(block);
+  }
+
+  eda.run.addEventListener("click", runEda);
+
+  // ---- What-if scenarios ----
+  const whatifRun = document.querySelector("#whatif-run");
+  const whatifOut = document.querySelector("#whatif");
+  const strategyWord = strategyLabels;
+
+  async function runWhatif() {
+    let payload;
+    try {
+      payload = collectPayload();
+    } catch (error) {
+      setStatus(error.message, "error");
+      return;
+    }
+    whatifRun.disabled = true;
+    whatifOut.replaceChildren();
+    const loading = document.createElement("p");
+    loading.className = "helper-text";
+    loading.textContent = "Comparando escenarios…";
+    whatifOut.appendChild(loading);
+    try {
+      const response = await fetch("api/whatif", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo comparar.");
+      renderWhatif(data.scenarios);
+    } catch (error) {
+      whatifOut.replaceChildren();
+      const err = document.createElement("p");
+      err.className = "form-status error";
+      err.textContent = error.message || "No se pudo comparar.";
+      whatifOut.appendChild(err);
+    } finally {
+      whatifRun.disabled = false;
+    }
+  }
+
+  function renderWhatif(scenarios) {
+    whatifOut.replaceChildren();
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+    const head = document.createElement("thead");
+    const hr = document.createElement("tr");
+    ["Escenario", "Técnica", "Despliegue", "Costo/mes", "Confianza", "Estado"].forEach((h) => addText(hr, "th", h));
+    head.appendChild(hr);
+    table.appendChild(head);
+    const body = document.createElement("tbody");
+    scenarios.forEach((s) => {
+      const tr = document.createElement("tr");
+      addText(tr, "td", s.label);
+      addText(tr, "td", strategyWord[s.strategy] || s.strategy);
+      addText(tr, "td", s.deploy_target || "—");
+      addText(tr, "td", s.estimated_monthly_usd != null ? `$${s.estimated_monthly_usd.toLocaleString()}` : "—");
+      addText(tr, "td", `${s.confidence}%`);
+      addText(tr, "td", s.forced ? "Forzado" : "OK");
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    whatifOut.appendChild(wrap);
+  }
+
+  whatifRun.addEventListener("click", runWhatif);
+
+  // ---- Router hint (EDA vs recommendation) ----
+  const routeHint = document.querySelector("#route-hint");
+  let routeTimer = null;
+
+  async function refreshRouteHint() {
+    const description = fields.description.value.trim();
+    if (!description) {
+      routeHint.hidden = true;
+      return;
+    }
+    const payload = {
+      description,
+      has_dataset: eda.csv.value.trim().length > 0,
+    };
+    if (fields.task.value) payload.task = fields.task.value;
+    try {
+      const response = await fetch("api/route", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        routeHint.hidden = true;
+        return;
+      }
+      routeHint.hidden = false;
+      routeHint.className = "route-hint " + (data.eda_suggested ? "eda" : "direct");
+      routeHint.replaceChildren();
+      const title = document.createElement("span");
+      title.className = "route-title";
+      title.textContent = data.eda_suggested
+        ? "Sugerido: analiza tu dataset (EDA) primero"
+        : "Sugerido: ve directo a la recomendación del Board";
+      routeHint.appendChild(title);
+      routeHint.appendChild(document.createTextNode(data.reason));
+    } catch (_) {
+      routeHint.hidden = true;
+    }
+  }
+
+  function scheduleRouteHint() {
+    if (routeTimer) clearTimeout(routeTimer);
+    routeTimer = setTimeout(refreshRouteHint, 400);
+  }
+
+  fields.description.addEventListener("input", scheduleRouteHint);
+  fields.task.addEventListener("change", refreshRouteHint);
+  eda.csv.addEventListener("input", scheduleRouteHint);
 })();

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import zipfile
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -30,10 +31,12 @@ from orchestrator.agents import (
     CONTEXT_BUDGET,
 )
 from architect import Constraints, HardwareProfile, ProblemContext
-from architect.models import PRIVACY_LEVELS
+from architect.models import PRIVACY_LEVELS, SERVING_MODES
 from architect.catalog import FAMILY_LABELS
 from architect.decision import run_review, serialize_adr
 from architect.artifacts import generate_files
+from architect.eda import analyze_csv, EdaError
+from architect.router import route as route_problem
 
 MAX_BODY_BYTES = 1_048_576
 VERSION = "0.1.0"
@@ -93,6 +96,9 @@ class ConsensusRequestHandler(BaseHTTPRequestHandler):
             "/api/architect",
             "/api/artifacts",
             "/api/artifacts.zip",
+            "/api/eda",
+            "/api/route",
+            "/api/whatif",
         ):
             self._write_error(404, "route not found")
             return
@@ -135,6 +141,12 @@ class ConsensusRequestHandler(BaseHTTPRequestHandler):
                 response = evaluate_architecture(payload)
             elif parsed.path == "/api/artifacts":
                 response = build_artifacts(payload)
+            elif parsed.path == "/api/eda":
+                response = run_eda(payload)
+            elif parsed.path == "/api/route":
+                response = run_route(payload)
+            elif parsed.path == "/api/whatif":
+                response = run_whatif(payload)
             else:
                 zip_bytes = artifacts_zip_bytes(payload)
                 self._write_download(
@@ -516,6 +528,9 @@ _CONSTRAINT_KEYS = {
     "privacy",
     "expected_requests_per_day",
     "data_changes_frequently",
+    "interpretability_required",
+    "class_imbalance",
+    "serving_mode",
 }
 
 
@@ -547,6 +562,80 @@ def artifacts_zip_bytes(payload: Any) -> bytes:
         for entry in files:
             archive.writestr(entry["path"], entry["content"])
     return buffer.getvalue()
+
+
+def run_eda(payload: Any) -> Dict[str, Any]:
+    """Validate CSV input and run the in-memory EDA sub-tool (no persistence)."""
+    if not isinstance(payload, dict):
+        raise RequestValidationError("request body must be an object")
+    _require_exact_keys(
+        "request", payload, {"csv"}, optional={"has_header", "delimiter"}
+    )
+    csv_text = payload.get("csv")
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise RequestValidationError("csv must be a non-empty string")
+    has_header = payload.get("has_header", True)
+    if not isinstance(has_header, bool):
+        raise RequestValidationError("has_header must be a boolean")
+    delimiter = payload.get("delimiter")
+    if delimiter is not None and (not isinstance(delimiter, str) or len(delimiter) != 1):
+        raise RequestValidationError("delimiter must be a single character")
+    try:
+        return analyze_csv(csv_text, has_header=has_header, delimiter=delimiter)
+    except EdaError as error:
+        raise RequestValidationError(str(error)) from error
+
+
+def run_route(payload: Any) -> Dict[str, Any]:
+    """Validate input and return the suggested path (EDA vs recommendation)."""
+    if not isinstance(payload, dict):
+        raise RequestValidationError("request body must be an object")
+    _require_exact_keys(
+        "request", payload, {"description"}, optional={"task", "has_dataset"}
+    )
+    description = payload.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise RequestValidationError("description must be a non-empty string")
+    task = payload.get("task")
+    if task is not None and (not isinstance(task, str) or task not in FAMILY_LABELS):
+        raise RequestValidationError("task is not a recognised problem family")
+    has_dataset = payload.get("has_dataset", False)
+    if not isinstance(has_dataset, bool):
+        raise RequestValidationError("has_dataset must be a boolean")
+    return route_problem(description.strip(), task=task, has_dataset=has_dataset)
+
+
+def run_whatif(payload: Any) -> Dict[str, Any]:
+    """Compare the recommendation across budget/privacy scenarios (what-if)."""
+    base = _context_from_payload(payload)
+    scenarios = [("Escenario actual", base)]
+    scenarios.append((
+        "Presupuesto ajustado ($50/mes)",
+        replace(base, constraints=replace(base.constraints, monthly_budget_usd=50.0)),
+    ))
+    scenarios.append((
+        "Presupuesto amplio ($1,000/mes)",
+        replace(base, constraints=replace(base.constraints, monthly_budget_usd=1000.0)),
+    ))
+    if base.constraints.privacy != "on_prem_only":
+        scenarios.append((
+            "Datos solo on-premise",
+            replace(base, constraints=replace(base.constraints, privacy="on_prem_only")),
+        ))
+
+    results = []
+    for label, context in scenarios:
+        adr = run_review(context)
+        results.append({
+            "label": label,
+            "strategy": adr.recommendation.strategy,
+            "model": adr.recommendation.model,
+            "deploy_target": adr.recommendation.deploy_target,
+            "estimated_monthly_usd": adr.recommendation.estimated_monthly_usd,
+            "confidence": adr.confidence,
+            "forced": adr.forced,
+        })
+    return {"scenarios": results}
 
 
 def _context_from_payload(payload: Any) -> ProblemContext:
@@ -650,9 +739,26 @@ def _parse_constraints(raw: Any) -> Constraints:
             data_changes_frequently=_optional_flag(
                 "data_changes_frequently", raw.get("data_changes_frequently")
             ),
+            interpretability_required=_optional_flag(
+                "interpretability_required", raw.get("interpretability_required")
+            ),
+            class_imbalance=_optional_flag(
+                "class_imbalance", raw.get("class_imbalance")
+            ),
+            serving_mode=_parse_serving_mode(raw.get("serving_mode")),
         )
     except ValueError as error:
         raise RequestValidationError(str(error)) from error
+
+
+def _parse_serving_mode(value: Any) -> str:
+    if value is None:
+        return "realtime"
+    if value not in SERVING_MODES:
+        raise RequestValidationError(
+            "serving_mode must be one of {}".format(", ".join(SERVING_MODES))
+        )
+    return value
 
 
 def _positive_number(name: str, value: Any) -> float:

@@ -316,6 +316,8 @@ class ConsensusWebTests(unittest.TestCase):
             "src/train.py",
         ):
             self.assertIn(expected, paths)
+        adr_md = next(f["content"] for f in json.loads(body)["files"] if f["path"] == "docs/ADR.md")
+        self.assertIn("Métricas y validación", adr_md)
 
     def test_artifacts_zip_downloads_valid_archive(self) -> None:
         import io
@@ -337,6 +339,97 @@ class ConsensusWebTests(unittest.TestCase):
             names = archive.namelist()
             self.assertIn("README.md", names)
             self.assertIn("infra/main.tf", names)
+
+    def test_eda_endpoint_analyzes_csv(self) -> None:
+        payload = {
+            "csv": "id,precio,ciudad\n1,100,BOG\n2,200,MED\n3,300,BOG\n",
+        }
+        status, _, body = self.request(
+            "/api/eda", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["rows_analyzed"], 3)
+        types = {c["name"]: c["type"] for c in data["columns"]}
+        self.assertEqual(types["ciudad"], "enumerator")
+        self.assertIn("no se almacenaron", data["privacy"])
+
+    def test_eda_endpoint_rejects_empty_csv(self) -> None:
+        status, _, body = self.request(
+            "/api/eda", "POST", {"csv": "   "}, "application/json"
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("csv", json.loads(body)["error"])
+
+    def test_route_endpoint_suggests_eda_with_dataset(self) -> None:
+        payload = {"description": "predecir precio", "task": "regression", "has_dataset": True}
+        status, _, body = self.request(
+            "/api/route", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["recommended_path"], "eda_first")
+        self.assertTrue(data["eda_suggested"])
+
+    def test_route_endpoint_direct_for_generative(self) -> None:
+        payload = {"description": "chatbot sobre PDFs", "task": "nlp_generative"}
+        status, _, body = self.request(
+            "/api/route", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["recommended_path"], "recommendation_only")
+
+    def test_whatif_endpoint_returns_scenarios(self) -> None:
+        payload = {
+            "description": "predecir precio con datos etiquetados",
+            "task": "regression",
+            "hardware": {"cpu_cores": 8, "ram_gb": 16, "unified_memory": True},
+            "constraints": {"monthly_budget_usd": 200, "privacy": "private_cloud"},
+        }
+        status, _, body = self.request(
+            "/api/whatif", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        labels = [s["label"] for s in data["scenarios"]]
+        self.assertIn("Escenario actual", labels)
+        self.assertTrue(any("Presupuesto ajustado" in l for l in labels))
+        for scenario in data["scenarios"]:
+            self.assertIn("strategy", scenario)
+            self.assertIn("deploy_target", scenario)
+            self.assertIn("confidence", scenario)
+
+    def test_architect_accepts_new_signals(self) -> None:
+        payload = {
+            "description": "clasificar churn",
+            "task": "classification",
+            "hardware": {"cpu_cores": 8, "ram_gb": 16, "unified_memory": True},
+            "constraints": {
+                "privacy": "private_cloud",
+                "interpretability_required": True,
+                "class_imbalance": True,
+                "serving_mode": "batch",
+                "max_latency_ms": 40,
+            },
+        }
+        status, _, body = self.request(
+            "/api/architect", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["recommendation"]["deploy_target"], "batch_transform")
+
+    def test_architect_rejects_invalid_serving_mode(self) -> None:
+        payload = {
+            "description": "algo",
+            "hardware": {"cpu_cores": 4, "ram_gb": 8},
+            "constraints": {"serving_mode": "telepathy"},
+        }
+        status, _, body = self.request(
+            "/api/architect", "POST", payload, "application/json"
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("serving_mode", json.loads(body)["error"])
 
 
 if __name__ == "__main__":

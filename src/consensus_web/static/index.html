@@ -21,6 +21,26 @@
   </header>
 
   <main class="container page-content">
+    <div id="route-hint" class="route-hint" hidden role="status" aria-live="polite"></div>
+
+    <section class="panel eda-panel" aria-labelledby="eda-title">
+      <div class="step-label"><span>EDA</span> Validador de datos (opcional)</div>
+      <h2 id="eda-title">Analiza tu dataset (en memoria, sin guardarlo)</h2>
+      <p class="helper-text">Pega o sube un CSV de muestra. Detectamos tipos y enumeradores, sugerimos normalización/encoding y calculamos correlaciones. Los datos se procesan en memoria y no se almacenan.</p>
+      <div class="eda-controls">
+        <label class="check"><input id="eda-header" type="checkbox" checked> La primera fila es encabezado</label>
+        <input id="eda-file" type="file" accept=".csv,text/csv" aria-label="Subir CSV">
+      </div>
+      <label for="eda-csv">CSV
+        <textarea id="eda-csv" rows="5" class="mono" spellcheck="false" placeholder="id,precio,ciudad&#10;1,100,BOG&#10;2,200,MED"></textarea>
+      </label>
+      <div class="actions">
+        <button id="eda-run" class="button secondary" type="button">Analizar datos</button>
+      </div>
+      <p id="eda-status" class="form-status" role="status" aria-live="polite"></p>
+      <div id="eda-result" hidden></div>
+    </section>
+
     <form id="architect-form" novalidate>
       <section class="panel" aria-labelledby="need-title">
         <div class="step-label"><span>1</span> Tu problema</div>
@@ -64,6 +84,22 @@
         <div class="hw-flags">
           <label class="check"><input id="labeled" type="checkbox" checked> Tengo datos etiquetados</label>
           <label class="check"><input id="data-changes" type="checkbox"> Los datos cambian con frecuencia</label>
+        </div>
+        <div class="need-grid">
+          <label>Latencia objetivo (ms) <span class="optional">(opcional)</span>
+            <input id="latency" type="number" min="0" step="1" inputmode="numeric" placeholder="100">
+          </label>
+          <label>Modo de servicio
+            <select id="serving-mode">
+              <option value="realtime" selected>Tiempo real</option>
+              <option value="batch">Batch (por lotes)</option>
+              <option value="streaming">Streaming</option>
+            </select>
+          </label>
+        </div>
+        <div class="hw-flags">
+          <label class="check"><input id="interpretability" type="checkbox"> Necesito interpretabilidad</label>
+          <label class="check"><input id="imbalance" type="checkbox"> Clases desbalanceadas</label>
         </div>
       </section>
 
@@ -127,6 +163,18 @@
       <section id="adr-panel" class="panel adr-panel" aria-labelledby="adr-title">
         <h2 id="adr-title">Architecture Decision Record</h2>
         <div id="adr"></div>
+      </section>
+      <section id="eval-panel" class="panel" aria-labelledby="eval-title">
+        <h2 id="eval-title">Métricas y validación</h2>
+        <div id="evaluation"></div>
+      </section>
+      <section id="whatif-panel" class="panel" aria-labelledby="whatif-title">
+        <div class="section-heading">
+          <div><h2 id="whatif-title">What-if: comparar escenarios</h2></div>
+          <button id="whatif-run" class="button secondary" type="button">Comparar escenarios</button>
+        </div>
+        <p class="helper-text">Mira cómo cambia la recomendación al variar presupuesto y privacidad.</p>
+        <div id="whatif"></div>
       </section>
     </section>
 
