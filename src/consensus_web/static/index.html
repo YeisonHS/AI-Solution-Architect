@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AI Solution Architect: un board de agentes debate y audita tu arquitectura de IA antes de escribir código.">
+  <title>AI Solution Architect</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-content">
+      <div>
+        <p class="eyebrow">ARCHITECTURE REVIEW BOARD</p>
+        <h1>AI Solution Architect</h1>
+        <p class="subtitle">Los LLM generan código. Nuestros agentes generan decisiones de arquitectura defendibles: debaten tu caso y te dicen qué construir y por qué.</p>
+      </div>
+      <a class="health-link" href="api/health" target="_blank" rel="noopener">Estado de API</a>
+    </div>
+  </header>
+
+  <main class="container page-content">
+    <div id="route-hint" class="route-hint" hidden role="status" aria-live="polite"></div>
+
+    <section class="panel eda-panel" aria-labelledby="eda-title">
+      <div class="step-label"><span>EDA</span> Validador de datos (opcional)</div>
+      <h2 id="eda-title">Analiza tu dataset (en memoria, sin guardarlo)</h2>
+      <p class="helper-text">Pega o sube un CSV de muestra. Detectamos tipos y enumeradores, sugerimos normalización/encoding y calculamos correlaciones. Los datos se procesan en memoria y no se almacenan.</p>
+      <div class="eda-controls">
+        <label class="check"><input id="eda-header" type="checkbox" checked> La primera fila es encabezado</label>
+        <input id="eda-file" type="file" accept=".csv,text/csv" aria-label="Subir CSV">
+      </div>
+      <label for="eda-csv">CSV
+        <textarea id="eda-csv" rows="5" class="mono" spellcheck="false" placeholder="id,precio,ciudad&#10;1,100,BOG&#10;2,200,MED"></textarea>
+      </label>
+      <div class="actions">
+        <button id="eda-run" class="button secondary" type="button">Analizar datos</button>
+      </div>
+      <p id="eda-status" class="form-status" role="status" aria-live="polite"></p>
+      <div id="eda-result" hidden></div>
+    </section>
+
+    <form id="architect-form" novalidate>
+      <section class="panel" aria-labelledby="need-title">
+        <div class="step-label"><span>1</span> Tu problema</div>
+        <h2 id="need-title">¿Qué quieres resolver?</h2>
+        <label for="description">Describe el problema de IA
+          <textarea id="description" rows="3" maxlength="600" required placeholder="Ej.: Quiero predecir el precio de venta a partir de un set de datos etiquetado."></textarea>
+        </label>
+        <div class="need-grid">
+          <label>Tipo de problema
+            <select id="task">
+              <option value="">Detectar automáticamente</option>
+              <option value="regression">Regresión (predecir un valor)</option>
+              <option value="classification">Clasificación (predecir categoría)</option>
+              <option value="clustering">Clustering (agrupar sin etiquetas)</option>
+              <option value="forecasting">Pronóstico (series temporales)</option>
+              <option value="anomaly_detection">Detección de anomalías</option>
+              <option value="recommendation">Recomendación</option>
+              <option value="computer_vision">Visión por computadora</option>
+              <option value="nlp_generative">IA generativa / NLP (documentos)</option>
+            </select>
+          </label>
+          <label>Filas del dataset <span class="optional">(opcional)</span>
+            <input id="rows" type="number" min="0" step="1" inputmode="numeric" placeholder="8000">
+          </label>
+          <label>Presupuesto mensual USD <span class="optional">(opcional)</span>
+            <input id="budget" type="number" min="0" step="1" inputmode="numeric" placeholder="100">
+          </label>
+        </div>
+        <div class="need-grid">
+          <label>Privacidad
+            <select id="privacy">
+              <option value="public">Nube pública</option>
+              <option value="private_cloud" selected>Nube privada</option>
+              <option value="on_prem_only">Solo on-premise</option>
+            </select>
+          </label>
+          <label>Documentos (si es generativo) <span class="optional">(opcional)</span>
+            <input id="docs" type="number" min="0" step="1" inputmode="numeric" placeholder="5000">
+          </label>
+        </div>
+        <div class="hw-flags">
+          <label class="check"><input id="labeled" type="checkbox" checked> Tengo datos etiquetados</label>
+          <label class="check"><input id="data-changes" type="checkbox"> Los datos cambian con frecuencia</label>
+        </div>
+        <div class="need-grid">
+          <label>Latencia objetivo (ms) <span class="optional">(opcional)</span>
+            <input id="latency" type="number" min="0" step="1" inputmode="numeric" placeholder="100">
+          </label>
+          <label>Modo de servicio
+            <select id="serving-mode">
+              <option value="realtime" selected>Tiempo real</option>
+              <option value="batch">Batch (por lotes)</option>
+              <option value="streaming">Streaming</option>
+            </select>
+          </label>
+        </div>
+        <div class="hw-flags">
+          <label class="check"><input id="interpretability" type="checkbox"> Necesito interpretabilidad</label>
+          <label class="check"><input id="imbalance" type="checkbox"> Clases desbalanceadas</label>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="hw-title">
+        <div class="step-label"><span>2</span> Tu máquina</div>
+        <h2 id="hw-title">Hardware para la Capability Matrix</h2>
+        <p class="helper-text">Con esto calculamos qué técnicas (RAG, Agents, LoRA, Fine-Tuning) corren en tu equipo.</p>
+        <div class="need-grid">
+          <label>Núcleos CPU
+            <input id="cpu" type="number" min="1" step="1" value="10" required>
+          </label>
+          <label>RAM (GB)
+            <input id="ram" type="number" min="1" step="1" value="16" required>
+          </label>
+          <label>VRAM GPU (GB)
+            <input id="vram" type="number" min="0" step="1" value="0">
+          </label>
+        </div>
+        <div class="hw-flags">
+          <label class="check"><input id="has-gpu" type="checkbox"> Tiene GPU dedicada</label>
+          <label class="check"><input id="unified" type="checkbox" checked> Memoria unificada (Apple Silicon)</label>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="load-example" class="button secondary" type="button">Cargar ejemplo del demo</button>
+        <button id="submit-button" class="button primary" type="submit">Convocar al Board</button>
+      </div>
+      <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section id="result" class="result" hidden aria-live="polite">
+      <div class="panel mode-panel">
+        <span class="mode-label">Modo de explicación</span>
+        <div class="mode-toggle" role="group" aria-label="Modo de explicación">
+          <button type="button" id="mode-beginner" class="mode-btn active" aria-pressed="true">Beginner</button>
+          <button type="button" id="mode-expert" class="mode-btn" aria-pressed="false">Expert</button>
+        </div>
+      </div>
+      <section id="problem-panel" class="panel" aria-labelledby="problem-title">
+        <h2 id="problem-title">Tipo de problema</h2>
+        <p id="problem-family" class="problem-family"></p>
+      </section>
+      <section id="techniques-panel" class="panel" aria-labelledby="techniques-title">
+        <h2 id="techniques-title">Técnicas recomendadas</h2>
+        <div id="techniques" class="techniques"></div>
+      </section>
+      <section id="matrix-panel" class="panel" aria-labelledby="matrix-title">
+        <h2 id="matrix-title">AI Capability Matrix</h2>
+        <p class="helper-text">Qué puede correr tu máquina localmente.</p>
+        <div id="matrix" class="matrix"></div>
+      </section>
+      <section id="debate-panel" class="panel" aria-labelledby="debate-title">
+        <h2 id="debate-title">Debate del Board</h2>
+        <div id="debate" class="debate"></div>
+      </section>
+      <section id="deploy-panel" class="panel" aria-labelledby="deploy-title">
+        <h2 id="deploy-title">Dónde desplegarlo</h2>
+        <div id="deploy" class="deploy"></div>
+      </section>
+      <section id="adr-panel" class="panel adr-panel" aria-labelledby="adr-title">
+        <h2 id="adr-title">Architecture Decision Record</h2>
+        <div id="adr"></div>
+      </section>
+      <section id="eval-panel" class="panel" aria-labelledby="eval-title">
+        <h2 id="eval-title">Métricas y validación</h2>
+        <div id="evaluation"></div>
+      </section>
+      <section id="plan-panel" class="panel" aria-labelledby="plan-title">
+        <h2 id="plan-title">Plan de implementación</h2>
+        <div id="plan"></div>
+      </section>
+      <section id="whatif-panel" class="panel" aria-labelledby="whatif-title">
+        <div class="section-heading">
+          <div><h2 id="whatif-title">What-if: comparar escenarios</h2></div>
+          <button id="whatif-run" class="button secondary" type="button">Comparar escenarios</button>
+        </div>
+        <p class="helper-text">Mira cómo cambia la recomendación al variar presupuesto y privacidad.</p>
+        <div id="whatif"></div>
+      </section>
+    </section>
+
+    <details class="technical-details">
+      <summary>Cómo decide el Board</summary>
+      <p>Cada agente devuelve un veredicto estructurado. Solo <strong>Security</strong> y <strong>Cost</strong> pueden bloquear; el resto advierte. El <strong>Consensus</strong> re-propone ante un bloqueo (máx. 2 rondas) y el <strong>confidence</strong> se calcula del acuerdo del Board y las reglas duras superadas — nunca se le pregunta al modelo. Los costos salen de una tabla curada de precios AWS.</p>
+    </details>
+  </main>
+</body>
+</html>
