@@ -12,8 +12,10 @@ dependency-free deployment.
 from __future__ import annotations
 
 import csv
+import datetime as _dt
 import io
 import math
+from collections import Counter
 from typing import Any, Dict, List, Optional
 
 MAX_ROWS = 5000
@@ -22,6 +24,12 @@ _SAMPLE_VALUES = 5
 _MAX_MAP_CATEGORIES = 20
 _HIGH_CORR = 0.7
 _ENUM_MAX_CARDINALITY = 20
+_HIGH_MISSING = 0.4
+_NEAR_CONSTANT = 0.95
+_DATE_FORMATS = (
+    "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+)
 
 _BOOL_TOKENS = {"true", "false", "yes", "no", "si", "sí", "0", "1", "t", "f"}
 
@@ -52,7 +60,10 @@ def analyze_csv(
         raise EdaError("el CSV no tiene filas")
 
     if has_header:
-        header = [h.strip() or "col_{}".format(i) for i, h in enumerate(all_rows[0])]
+        header = [
+            h.replace("\ufeff", "").strip() or "col_{}".format(i)
+            for i, h in enumerate(all_rows[0])
+        ]
         data_rows = all_rows[1:]
     else:
         width = len(all_rows[0])
@@ -86,8 +97,10 @@ def analyze_csv(
     }
     correlations, high_correlations = _correlations(numeric_aligned)
     enumerators = [col for col in columns if col["type"] == "enumerator"]
-    recommendations = _recommendations(columns, high_correlations)
     suggested = _suggested_context(columns, len(data_rows))
+    target_correlations = _target_correlations(numeric_aligned, suggested)
+    date_columns = [col["name"] for col in columns if col["type"] == "datetime"]
+    recommendations = _recommendations(columns, high_correlations, date_columns)
 
     return {
         "privacy": "Los datos se analizaron en memoria y no se almacenaron.",
@@ -99,9 +112,28 @@ def analyze_csv(
         "enumerators": enumerators,
         "correlations": correlations,
         "high_correlations": high_correlations,
+        "target_correlations": target_correlations,
+        "date_columns": date_columns,
+        "time_series_candidate": bool(date_columns),
         "recommendations": recommendations,
         "suggested_context": suggested,
     }
+
+
+def _target_correlations(numeric_aligned, suggested) -> List[Dict[str, Any]]:
+    """Rank numeric features by |Pearson r| against a numeric target column."""
+    target = suggested.get("primary_target")
+    if not target or target not in numeric_aligned:
+        return []
+    ranked = []
+    for name, values in numeric_aligned.items():
+        if name == target:
+            continue
+        r = _pearson_pairwise(values, numeric_aligned[target])
+        if r is not None:
+            ranked.append({"feature": name, "r": r})
+    ranked.sort(key=lambda item: abs(item["r"]), reverse=True)
+    return ranked
 
 
 def _sniff_delimiter(sample: str) -> str:
@@ -123,6 +155,43 @@ def _numeric_values(values: List[str]) -> List[float]:
     return result
 
 
+def _is_sequential_index(numeric: List[float]) -> bool:
+    """True if values are a contiguous integer index like 0,1,2,... or 1,2,3,..."""
+    if len(numeric) < 2:
+        return False
+    ints = sorted(int(v) for v in numeric)
+    if len(set(ints)) != len(ints):
+        return False
+    return ints == list(range(ints[0], ints[0] + len(ints)))
+
+
+def _looks_like_date(values: List[str]) -> bool:
+    """True if a strong majority of a sample parses as dates (needs separators)."""
+    sample = values[:50]
+    if len(sample) < 2:
+        return False
+    matched = 0
+    for value in sample:
+        if "-" not in value and "/" not in value:
+            continue
+        for fmt in _DATE_FORMATS:
+            try:
+                _dt.datetime.strptime(value, fmt)
+                matched += 1
+                break
+            except ValueError:
+                continue
+    return matched >= max(2, int(0.9 * len(sample)))
+
+
+def _is_near_constant(non_empty: List[str], n_unique: int) -> bool:
+    """True if one value dominates (>=95%) while there is more than one value."""
+    if n_unique <= 1 or not non_empty:
+        return False
+    dominant = Counter(non_empty).most_common(1)[0][1]
+    return dominant / len(non_empty) >= _NEAR_CONSTANT
+
+
 def _analyze_column(name: str, values: List[str]) -> Dict[str, Any]:
     total = len(values)
     non_empty = [v for v in values if v != ""]
@@ -136,8 +205,11 @@ def _analyze_column(name: str, values: List[str]) -> Dict[str, Any]:
     report: Dict[str, Any] = {
         "name": name,
         "n_missing": missing,
+        "missing_pct": round(missing / total, 3) if total else 0.0,
         "n_unique": n_unique,
         "sample": distinct[:_SAMPLE_VALUES],
+        "high_missing": bool(total) and (missing / total) >= _HIGH_MISSING,
+        "near_constant": _is_near_constant(non_empty, n_unique),
     }
 
     lowered = {v.lower() for v in distinct}
@@ -152,12 +224,17 @@ def _analyze_column(name: str, values: List[str]) -> Dict[str, Any]:
         report["type"] = "boolean"
         report["note"] = "Binaria; codifícala como 0/1."
         return report
+    if _looks_like_date(non_empty):
+        report["type"] = "datetime"
+        report["note"] = "Columna de fecha; útil para un problema de forecasting."
+        return report
     if is_numeric:
         report.update(_numeric_stats(numeric))
-        if all_unique and (name_is_id or total > 20):
+        is_int = all(float(v).is_integer() for v in numeric)
+        if all_unique and is_int and (name_is_id or _is_sequential_index(numeric)):
             report["type"] = "id"
-            report["note"] = "Parece un identificador; no la uses como feature."
-        elif n_unique <= 10 and all(float(v).is_integer() for v in numeric):
+            report["note"] = "Parece un índice/identificador; no la uses como feature."
+        elif n_unique <= 10 and is_int:
             report["type"] = "numeric"
             report["note"] = "Numérica de baja cardinalidad: podría ser categórica ordinal."
         else:
@@ -264,7 +341,9 @@ def _pearson_pairwise(
 
 
 def _recommendations(
-    columns: List[Dict[str, Any]], high_correlations: List[Dict[str, Any]]
+    columns: List[Dict[str, Any]],
+    high_correlations: List[Dict[str, Any]],
+    date_columns: Optional[List[str]] = None,
 ) -> List[str]:
     recs: List[str] = []
     constants = [c["name"] for c in columns if c["type"] == "constant"]
@@ -272,9 +351,29 @@ def _recommendations(
     enums = [c["name"] for c in columns if c["type"] == "enumerator"]
     missing = [c["name"] for c in columns if c["n_missing"] > 0]
     numerics = [c["name"] for c in columns if c["type"] == "numeric"]
+    high_missing = [
+        "{} ({:.0%})".format(c["name"], c["missing_pct"])
+        for c in columns if c.get("high_missing")
+    ]
+    near_constant = [
+        c["name"] for c in columns
+        if c.get("near_constant") and c["type"] != "constant"
+    ]
 
     if constants:
         recs.append("Eliminar columnas constantes: {}.".format(", ".join(constants)))
+    if high_missing:
+        recs.append(
+            "Considera descartar (o imputar con cuidado) por muchos faltantes: {}.".format(
+                ", ".join(high_missing)
+            )
+        )
+    if near_constant:
+        recs.append(
+            "Casi constantes (poca varianza, aportan poco): {}.".format(
+                ", ".join(near_constant)
+            )
+        )
     if ids:
         recs.append("Excluir identificadores del modelo: {}.".format(", ".join(ids)))
     if missing:
@@ -283,6 +382,13 @@ def _recommendations(
         recs.append("Codificar enumeradores: {}.".format(", ".join(enums)))
     if numerics:
         recs.append("Escalar variables numéricas (z-score o min-max) antes de entrenar.")
+    if date_columns:
+        recs.append(
+            "Detectada(s) columna(s) de fecha ({}): si predices a lo largo del tiempo, "
+            "considera un problema de forecasting (serie temporal).".format(
+                ", ".join(date_columns)
+            )
+        )
     for pair in high_correlations[:5]:
         recs.append(
             "Alta correlación entre {} y {} (r={}); revisa multicolinealidad.".format(

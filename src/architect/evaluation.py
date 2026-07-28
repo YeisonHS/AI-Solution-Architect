@@ -14,6 +14,7 @@ from .catalog import (
     FAMILY_CLUSTERING,
     FAMILY_FORECASTING,
     FAMILY_GENERATIVE,
+    FAMILY_GENERATIVE_MEDIA,
     FAMILY_RECOMMENDATION,
     FAMILY_REGRESSION,
     FAMILY_VISION,
@@ -151,6 +152,24 @@ EVALUATION: Dict[str, Dict[str, Any]] = {
             "Revisa el desbalance de clases.",
         ],
         "Clase mayoritaria / modelo preentrenado sin ajustar.",
+    ),
+    FAMILY_GENERATIVE_MEDIA: _entry(
+        [
+            ("Evaluación humana", "Calidad percibida por revisores con rúbrica."),
+            ("FID / CLIPScore", "Fidelidad y alineación con el prompt."),
+            ("Coherencia temporal", "Estabilidad entre cuadros (video)."),
+            ("Latencia y costo por generación", "Operación y presupuesto."),
+        ],
+        [
+            "Define un set de prompts de prueba representativos.",
+            "Evaluación humana o A/B; complementa con métricas automáticas.",
+            "Revisa seguridad del contenido y derechos de uso.",
+        ],
+        [
+            "No te fíes solo de métricas automáticas; la calidad es perceptual.",
+            "Vigila costo/latencia por generación y contenido inseguro o con sesgos.",
+        ],
+        "Modelo preentrenado sin personalizar (API).",
     ),
     FAMILY_GENERATIVE: _entry(
         [

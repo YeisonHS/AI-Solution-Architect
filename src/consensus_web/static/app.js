@@ -30,6 +30,7 @@
     vram: document.querySelector("#vram"),
     hasGpu: document.querySelector("#has-gpu"),
     unified: document.querySelector("#unified"),
+    hwNote: document.querySelector("#hw-note"),
   };
 
   const techniqueLabels = { rag: "RAG", agents: "Agents", lora: "LoRA", fine_tuning: "Fine-Tuning" };
@@ -502,6 +503,48 @@
   modeBeginner.addEventListener("click", () => setMode("beginner"));
   modeExpert.addEventListener("click", () => setMode("expert"));
 
+  // ---- Best-effort hardware auto-detection (browser-side) ----
+  async function detectHardware() {
+    try {
+      let detected = [];
+      if (navigator.hardwareConcurrency) {
+        fields.cpu.value = String(navigator.hardwareConcurrency);
+        detected.push("CPU");
+      }
+      if (navigator.deviceMemory) {
+        fields.ram.value = String(navigator.deviceMemory);
+        detected.push("RAM (aprox.)");
+      }
+      let platform = (navigator.platform || navigator.userAgent || "");
+      let isMac = /mac/i.test(platform);
+      let isArm = false;
+      let archKnown = false;
+      const uaData = navigator.userAgentData;
+      if (uaData && uaData.getHighEntropyValues) {
+        try {
+          const hev = await uaData.getHighEntropyValues(["architecture", "platform"]);
+          if (hev.platform) isMac = /mac/i.test(hev.platform);
+          if (typeof hev.architecture === "string") {
+            isArm = /arm/i.test(hev.architecture);
+            archKnown = true;
+          }
+        } catch (_) {}
+      }
+      // Unified memory only applies to Apple Silicon (Mac + ARM).
+      // On Linux/Windows this is always unchecked.
+      fields.unified.checked = isMac && (archKnown ? isArm : true);
+
+      const os = isMac ? "macOS" : (/win/i.test(platform) ? "Windows" : /linux/i.test(platform) ? "Linux" : "tu sistema");
+      const note = detected.length
+        ? "Detectado en " + os + ": " + detected.join(", ") + ". GPU/VRAM no se detectan desde el navegador: ingrésalas si aplica. Ajusta cualquier valor."
+        : "Tu navegador no expone specs de hardware. Ingresa CPU, RAM y GPU manualmente.";
+      if (fields.hwNote) fields.hwNote.textContent = note;
+    } catch (_) {
+      if (fields.hwNote) fields.hwNote.textContent = "";
+    }
+  }
+  detectHardware();
+
   // ---- EDA sub-tool ----
   const eda = {
     csv: document.querySelector("#eda-csv"),
@@ -584,7 +627,10 @@
       addText(tr, "td", String(c.n_missing));
       let hint = c.note || "";
       if (c.type === "enumerator") hint = `Encoding: ${c.encoding}`;
+      else if (c.type === "datetime") hint = "Fecha → considera forecasting";
       else if (c.type === "numeric" && c.normalization) hint = `Escalar: ${c.normalization.recommended}`;
+      if (c.high_missing) hint = (hint ? hint + " · " : "") + "muchos faltantes";
+      else if (c.near_constant) hint = (hint ? hint + " · " : "") + "casi constante";
       addText(tr, "td", hint);
       tbody.appendChild(tr);
     });
@@ -620,6 +666,22 @@
 
     // Correlation heatmap
     renderHeatmap(data.correlations);
+
+    // Feature ranking vs target
+    if (data.target_correlations && data.target_correlations.length) {
+      const target = data.suggested_context && data.suggested_context.primary_target;
+      const block = document.createElement("section");
+      block.className = "result-block";
+      addText(block, "h4", "Relación de cada variable con el objetivo" + (target ? " (" + target + ")" : ""));
+      const list = document.createElement("ul");
+      list.className = "result-list";
+      data.target_correlations.forEach((item) => {
+        const strength = Math.abs(item.r) >= 0.7 ? "fuerte" : Math.abs(item.r) >= 0.4 ? "moderada" : "débil";
+        addText(list, "li", `${item.feature}: r = ${item.r} (relación ${strength})`);
+      });
+      block.appendChild(list);
+      eda.result.appendChild(block);
+    }
 
     // Target column suggestion
     const ctx = data.suggested_context || {};
@@ -730,6 +792,28 @@
   }
 
   eda.run.addEventListener("click", runEda);
+
+  // Salary Dataset (Kaggle: abhishek14398/salary-dataset-simple-linear-regression)
+  const SALARY_EXAMPLE = [
+    ",YearsExperience,Salary",
+    "0,1.1,39343.0", "1,1.3,46205.0", "2,1.5,37731.0", "3,2.0,43525.0",
+    "4,2.2,39891.0", "5,2.9,56642.0", "6,3.0,60150.0", "7,3.2,54445.0",
+    "8,3.2,64445.0", "9,3.7,57189.0", "10,3.9,63218.0", "11,4.0,55794.0",
+    "12,4.0,56957.0", "13,4.1,57081.0", "14,4.5,61111.0", "15,4.9,67938.0",
+    "16,5.1,66029.0", "17,5.3,83088.0", "18,5.9,81363.0", "19,6.0,93940.0",
+    "20,6.8,91738.0", "21,7.1,98273.0", "22,7.9,101302.0", "23,8.2,113812.0",
+    "24,8.7,109431.0", "25,9.0,105582.0", "26,9.5,116969.0", "27,9.6,112635.0",
+    "28,10.3,122391.0", "29,10.5,121872.0",
+  ].join("\n") + "\n";
+
+  const edaExampleButton = document.querySelector("#eda-example");
+  if (edaExampleButton) {
+    edaExampleButton.addEventListener("click", () => {
+      eda.csv.value = SALARY_EXAMPLE;
+      eda.header.checked = true;
+      edaStatus("Ejemplo del Salary Dataset cargado. Pulsa «Analizar datos».");
+    });
+  }
 
   // ---- What-if scenarios ----
   const whatifRun = document.querySelector("#whatif-run");

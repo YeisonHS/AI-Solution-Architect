@@ -23,24 +23,6 @@
   <main class="container page-content">
     <div id="route-hint" class="route-hint" hidden role="status" aria-live="polite"></div>
 
-    <section class="panel eda-panel" aria-labelledby="eda-title">
-      <div class="step-label"><span>EDA</span> Validador de datos (opcional)</div>
-      <h2 id="eda-title">Analiza tu dataset (en memoria, sin guardarlo)</h2>
-      <p class="helper-text">Pega o sube un CSV de muestra. Detectamos tipos y enumeradores, sugerimos normalización/encoding y calculamos correlaciones. Los datos se procesan en memoria y no se almacenan.</p>
-      <div class="eda-controls">
-        <label class="check"><input id="eda-header" type="checkbox" checked> La primera fila es encabezado</label>
-        <input id="eda-file" type="file" accept=".csv,text/csv" aria-label="Subir CSV">
-      </div>
-      <label for="eda-csv">CSV
-        <textarea id="eda-csv" rows="5" class="mono" spellcheck="false" placeholder="id,precio,ciudad&#10;1,100,BOG&#10;2,200,MED"></textarea>
-      </label>
-      <div class="actions">
-        <button id="eda-run" class="button secondary" type="button">Analizar datos</button>
-      </div>
-      <p id="eda-status" class="form-status" role="status" aria-live="polite"></p>
-      <div id="eda-result" hidden></div>
-    </section>
-
     <form id="architect-form" novalidate>
       <section class="panel" aria-labelledby="need-title">
         <div class="step-label"><span>1</span> Tu problema</div>
@@ -60,6 +42,7 @@
               <option value="recommendation">Recomendación</option>
               <option value="computer_vision">Visión por computadora</option>
               <option value="nlp_generative">IA generativa / NLP (documentos)</option>
+              <option value="generative_media">Generación de contenido (imagen/video/audio)</option>
             </select>
           </label>
           <label>Filas del dataset <span class="optional">(opcional)</span>
@@ -103,10 +86,31 @@
         </div>
       </section>
 
+      <section class="panel eda-panel" aria-labelledby="eda-title">
+        <div class="step-label"><span>EDA</span> Validador de datos (opcional)</div>
+        <h2 id="eda-title">Analiza tu dataset (en memoria, sin guardarlo)</h2>
+        <p class="helper-text">Pega o sube un CSV de muestra. Detectamos tipos y enumeradores, sugerimos normalización/encoding y calculamos correlaciones. Los datos se procesan en memoria y no se almacenan.</p>
+        <p class="helper-text">¿Sin datos a mano? Prueba el <a href="https://www.kaggle.com/datasets/abhishek14398/salary-dataset-simple-linear-regression?resource=download" target="_blank" rel="noopener">Salary Dataset (Kaggle)</a> con el botón «Cargar ejemplo».</p>
+        <div class="eda-controls">
+          <label class="check"><input id="eda-header" type="checkbox" checked> La primera fila es encabezado</label>
+          <input id="eda-file" type="file" accept=".csv,text/csv" aria-label="Subir CSV">
+        </div>
+        <label for="eda-csv">CSV
+          <textarea id="eda-csv" rows="5" class="mono" spellcheck="false" placeholder="id,precio,ciudad&#10;1,100,BOG&#10;2,200,MED"></textarea>
+        </label>
+        <div class="actions">
+          <button id="eda-example" class="button secondary" type="button">Cargar ejemplo (salarios)</button>
+          <button id="eda-run" class="button secondary" type="button">Analizar datos</button>
+        </div>
+        <p id="eda-status" class="form-status" role="status" aria-live="polite"></p>
+        <div id="eda-result" hidden></div>
+      </section>
+
       <section class="panel" aria-labelledby="hw-title">
         <div class="step-label"><span>2</span> Tu máquina</div>
         <h2 id="hw-title">Hardware para la Capability Matrix</h2>
         <p class="helper-text">Con esto calculamos qué técnicas (RAG, Agents, LoRA, Fine-Tuning) corren en tu equipo.</p>
+        <p id="hw-note" class="helper-text"></p>
         <div class="need-grid">
           <label>Núcleos CPU
             <input id="cpu" type="number" min="1" step="1" value="10" required>

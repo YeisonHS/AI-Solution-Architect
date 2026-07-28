@@ -14,6 +14,7 @@ from .catalog import (
     FAMILY_CLUSTERING,
     FAMILY_FORECASTING,
     FAMILY_GENERATIVE,
+    FAMILY_GENERATIVE_MEDIA,
     FAMILY_LABELS,
     FAMILY_RECOMMENDATION,
     FAMILY_REGRESSION,
@@ -49,7 +50,7 @@ def route(
     family = task if (task and task in FAMILY_LABELS) else detect_family(description)
     mentions_data = any(word in text for word in _DATA_KEYWORDS)
 
-    if family in (FAMILY_GENERATIVE, FAMILY_VISION):
+    if family in (FAMILY_GENERATIVE, FAMILY_VISION, FAMILY_GENERATIVE_MEDIA):
         path = RECOMMENDATION_ONLY
         reason = (
             "Caso generativo o de visión: un EDA de CSV tabular no aplica. "

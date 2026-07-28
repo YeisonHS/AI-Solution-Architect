@@ -59,6 +59,18 @@ class ClassicFamiliesTests(unittest.TestCase):
         data = serialize_adr(ctx, run_review(ctx))
         self.assertEqual(data["problem"]["family"], "forecasting")
 
+    def test_generate_videos_is_media_not_rag(self) -> None:
+        ctx = context("quiero generar videos para internet")
+        data = serialize_adr(ctx, run_review(ctx))
+        self.assertEqual(data["problem"]["family"], "generative_media")
+        self.assertNotEqual(data["recommendation"]["strategy"], "rag")
+        self.assertEqual(data["recommendation"]["strategy"], "pretrained_generation")
+
+    def test_documents_still_generative_nlp(self) -> None:
+        ctx = context("chatbot sobre documentos PDF de la empresa")
+        data = serialize_adr(ctx, run_review(ctx))
+        self.assertEqual(data["problem"]["family"], "nlp_generative")
+
     def test_adr_includes_evaluation_per_family(self) -> None:
         from architect.catalog import FAMILY_LABELS
 

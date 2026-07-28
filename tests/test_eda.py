@@ -68,6 +68,64 @@ class EdaEngineTests(unittest.TestCase):
         with self.assertRaises(EdaError):
             analyze_csv("   ")
 
+    def test_target_correlations_rank_features(self) -> None:
+        csv = "years,bono,salary\n" + "\n".join(
+            "{},{},{}".format(round(1.1 + i * 0.4, 1), i % 3, 30000 + i * 1500)
+            for i in range(30)
+        ) + "\n"
+        report = analyze_csv(csv)
+        tc = report["target_correlations"]
+        self.assertTrue(tc)
+        self.assertEqual(report["suggested_context"]["primary_target"], "salary")
+        # years should correlate more strongly with salary than the noisy bono.
+        by = {t["feature"]: abs(t["r"]) for t in tc}
+        self.assertIn("years", by)
+        self.assertGreater(by["years"], by.get("bono", 0))
+
+    def test_date_column_flags_forecasting(self) -> None:
+        csv = "fecha,ventas\n" + "\n".join(
+            "2023-01-{:02d},{}".format((i % 28) + 1, 100 + i) for i in range(20)
+        ) + "\n"
+        report = analyze_csv(csv)
+        by = {c["name"]: c for c in report["columns"]}
+        self.assertEqual(by["fecha"]["type"], "datetime")
+        self.assertEqual(report["date_columns"], ["fecha"])
+        self.assertTrue(report["time_series_candidate"])
+        self.assertTrue(any("forecasting" in r.lower() for r in report["recommendations"]))
+
+    def test_high_missing_and_near_constant_flagged(self) -> None:
+        # col a: 60% missing; col b: near-constant (dominant value); col c: target
+        rows = []
+        for i in range(20):
+            a = "" if i % 5 != 0 else str(i)  # 80% missing
+            b = "x" if i < 19 else "y"          # near constant
+            rows.append("{},{},{}".format(a, b, 10 + i))
+        csv = "a,b,c\n" + "\n".join(rows) + "\n"
+        report = analyze_csv(csv)
+        by = {c["name"]: c for c in report["columns"]}
+        self.assertTrue(by["a"]["high_missing"])
+        self.assertTrue(by["b"]["near_constant"])
+        recs = " ".join(report["recommendations"]).lower()
+        self.assertIn("faltantes", recs)
+        self.assertIn("casi constantes", recs)
+
+    def test_continuous_unique_column_is_not_id(self) -> None:
+        # A continuous numeric column (all-unique) must NOT be treated as an id;
+        # a sequential integer index must be. Correlation must be computed.
+        csv = ",years,salary\n" + "\n".join(
+            "{},{},{}".format(i, round(1.1 + i * 0.4, 1), 30000 + i * 1000)
+            for i in range(25)
+        ) + "\n"
+        report = analyze_csv(csv)
+        by = {c["name"]: c for c in report["columns"]}
+        self.assertEqual(by["col_0"]["type"], "id")       # sequential index
+        self.assertEqual(by["salary"]["type"], "numeric")  # continuous target
+        self.assertEqual(by["years"]["type"], "numeric")
+        pair = report["high_correlations"]
+        self.assertTrue(pair)  # years vs salary are correlated
+        self.assertEqual(report["suggested_context"]["primary_target"], "salary")
+        self.assertEqual(report["suggested_context"]["suggested_task"], "regression")
+
     def test_target_suggestion_regression(self) -> None:
         # Last usable column is numeric -> regression.
         report = analyze_csv("ciudad,area,precio\nBOG,50,100\nMED,100,200\nCAL,150,300\n")
