@@ -21,6 +21,7 @@ FAMILY_ANOMALY = "anomaly_detection"
 FAMILY_RECOMMENDATION = "recommendation"
 FAMILY_VISION = "computer_vision"
 FAMILY_GENERATIVE = "nlp_generative"
+FAMILY_GENERATIVE_MEDIA = "generative_media"
 
 FAMILY_LABELS: Dict[str, str] = {
     FAMILY_REGRESSION: "Regresión (predecir un valor numérico)",
@@ -31,6 +32,7 @@ FAMILY_LABELS: Dict[str, str] = {
     FAMILY_RECOMMENDATION: "Sistemas de recomendación",
     FAMILY_VISION: "Visión por computadora",
     FAMILY_GENERATIVE: "IA generativa / NLP sobre documentos",
+    FAMILY_GENERATIVE_MEDIA: "Generación de contenido (imagen/video/audio)",
 }
 
 
@@ -373,14 +375,47 @@ FAMILY_TECHNIQUES: Dict[str, List[Technique]] = {
             ["LangChain"], "baja"
         ),
     ],
+    FAMILY_GENERATIVE_MEDIA: [
+        Technique(
+            "pretrained_generation", "Modelo generativo preentrenado (API/endpoint)",
+            "Usa un modelo de difusión/generación ya entrenado (texto→imagen/video) vía API o endpoint gestionado.",
+            "La mayoría de casos: rápido, sin entrenar y escalable.",
+            ["Diffusers", "Bedrock/Replicate API", "ComfyUI"], "media"
+        ),
+        Technique(
+            "diffusion_lora", "Personalización con LoRA (difusión)",
+            "Ajusta estilo, marca o personaje con LoRA sobre un modelo de difusión.",
+            "Necesitas un estilo propio con pocos datos.",
+            ["Diffusers", "PEFT"], "alta", needs_gpu=True
+        ),
+        Technique(
+            "full_diffusion_training", "Entrenar difusión desde cero",
+            "Entrena un modelo generativo propio de imagen/video.",
+            "Dominio único y presupuesto muy alto (poco común).",
+            ["PyTorch"], "alta", needs_gpu=True
+        ),
+    ],
 }
 
 
 # ---- Keyword detection ------------------------------------------------------
 
 _KEYWORDS = [
-    (FAMILY_GENERATIVE, ["chatbot", "documento", "pdf", "texto", "llm", "rag",
-                          "generar", "genera ", "resumen", "pregunta"]),
+    (FAMILY_GENERATIVE_MEDIA, ["generar video", "generar vídeo", "generar imagen",
+                               "generar imágen", "generar imagenes", "generar imágenes",
+                               "generar audio", "generar música", "crear video",
+                               "crear vídeo", "crear imagen", "crear imágen",
+                               "crear imagenes", "crear imágenes", "crear audio",
+                               "hacer video", "hacer vídeo", "hacer imagen",
+                               "texto a video", "texto a imagen", "video generativ",
+                               "imagen generativ", "contenido generativ",
+                               "síntesis de voz", "voz sintética", "deepfake",
+                               "difusión", "stable diffusion", "generación de video",
+                               "generación de imagen", "generación de imágenes",
+                               "generación de audio"]),
+    (FAMILY_GENERATIVE, ["chatbot", "documento", "pdf", "rag", "resumen",
+                         "pregunta", "generar texto", "genera texto", "nlp",
+                         "llm"]),
     (FAMILY_VISION, ["imagen", "imágenes", "visión", "foto", "objeto", "video",
                      "detección de objeto"]),
     (FAMILY_FORECASTING, ["serie", "pronóstico", "pronosticar", "forecast",
@@ -418,6 +453,7 @@ def recommended_technique(family: str) -> Optional[Technique]:
 HEAVY_TECHNIQUES = {
     "deep_regression", "deep_classifier", "deep_ts", "autoencoder",
     "two_tower", "transfer_learning", "yolo", "lora", "fine_tuning",
+    "diffusion_lora", "full_diffusion_training",
 }
 
 GPU_DEPLOY_TARGETS = {key for key, t in DEPLOY_TARGETS.items() if t.gpu}
